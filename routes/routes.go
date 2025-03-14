@@ -2,16 +2,18 @@ package routes
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/oneplusone/controllers"
+	"github.com/oneplusone/di"
 	"github.com/oneplusone/middlewares"
 )
 
 // SetupRouter 配置路由
-func SetupRouter(userController *controllers.UserController, jwtSecret string) *gin.Engine {
+func SetupRouter(container *di.Container, jwtSecret string) *gin.Engine {
 	r := gin.Default()
 
 	// 使用日志中间件
 	r.Use(middlewares.Logger())
+
+	userController := container.UserController
 
 	// API组
 	api := r.Group("/api")

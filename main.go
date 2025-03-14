@@ -4,12 +4,10 @@ import (
 	"log"
 
 	"github.com/oneplusone/config"
-	"github.com/oneplusone/controllers"
 	"github.com/oneplusone/models"
-	"github.com/oneplusone/repositories"
 	"github.com/oneplusone/routes"
-	"github.com/oneplusone/services"
 	"github.com/oneplusone/utils"
+	"github.com/oneplusone/di"
 )
 
 func main() {
@@ -28,13 +26,11 @@ func main() {
 	// 自动迁移表结构
 	db.AutoMigrate(&models.User{})
 
-	// 初始化仓库、服务和控制器
-	userRepo := repositories.NewUserRepository(db)
-	userService := services.NewUserService(userRepo, cfg.JWTSecret)
-	userController := controllers.NewUserController(userService)
+	// 初始化依赖注入容器
+	container := di.NewContainer(db, cfg.JWTSecret)
 
 	// 设置路由
-	router := routes.SetupRouter(userController, cfg.JWTSecret)
+	router := routes.SetupRouter(container, cfg.JWTSecret)
 
 	// 启动服务器
 	log.Printf("服务器已启动，监听端口 %s", cfg.ServerPort)
