@@ -15,6 +15,7 @@ type Config struct {
 	DBSource   string
 	JWTSecret  string
 	ServerPort string
+	DBLogLevel string // "silent", "info", "warn", "error"
 }
 
 // LoadConfig 从环境变量加载配置
@@ -29,6 +30,7 @@ func LoadConfig() (*Config, error) {
 		DBSource:   getEnv("DB_SOURCE", "oneplusone.db"),
 		JWTSecret:  getEnv("JWT_SECRET", "your_jwt_secret_key"),
 		ServerPort: getEnv("SERVER_PORT", "8080"),
+		DBLogLevel: getEnv("DB_LOG_LEVEL", "info"),
 	}, nil
 }
 

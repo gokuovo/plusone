@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 
 	"github.com/plusone/models"
@@ -11,54 +12,67 @@ import (
 
 // UserService 用户服务层
 type UserService struct {
+	db   *utils.Database
 	repo *repositories.UserRepository
 	jwt  string
 }
 
 // NewUserService 创建用户服务实例
-func NewUserService(repo *repositories.UserRepository, jwtSecret string) *UserService {
+func NewUserService(db *utils.Database, repo *repositories.UserRepository, jwtSecret string) *UserService {
 	return &UserService{
+		db:   db,
 		repo: repo,
 		jwt:  jwtSecret,
 	}
 }
 
 // Register 用户注册
-func (s *UserService) Register(username, password, email, nickname string) (*models.User, error) {
-	// 检查用户名是否已存在
-	_, err := s.repo.FindByUsername(username)
-	if err == nil {
-		return nil, errors.New("用户名已存在")
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
+func (s *UserService) Register(ctx context.Context, username, password, email, nickname string) (*models.User, error) {
+	var user *models.User
+	// GORM 事务
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 使用事务作用域的 repository
+		txRepo := repositories.NewUserRepository(&utils.Database{DB: tx})
 
-	// 创建新用户
-	user := &models.User{
-		Username: username,
-		Email:    email,
-		Nickname: nickname,
-	}
+		// 1. 检查用户名是否已存在
+		_, err := txRepo.FindByUsername(ctx, username)
+		if err == nil {
+			return errors.New("用户名已存在")
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 
-	// 设置密码
-	if err := user.SetPassword(password); err != nil {
-		return nil, err
-	}
+		// 2. 创建新用户
+		newUser := &models.User{
+			Username: username,
+			Email:    email,
+			Nickname: nickname,
+		}
 
-	// 保存用户
-	if err := s.repo.Create(user); err != nil {
-		return nil, err
-	}
+		// 3. 设置密码
+		if err := newUser.SetPassword(password); err != nil {
+			return err
+		}
 
-	return user, nil
+		// 4. 保存用户
+		if err := txRepo.Create(ctx, newUser); err != nil {
+			return err
+		}
+
+		user = newUser
+		return nil // 事务提交
+	})
+
+	return user, err
 }
 
 // Login 用户登录
-func (s *UserService) Login(username, password string) (string, error) {
-	user, err := s.repo.FindByUsername(username)
+func (s *UserService) Login(ctx context.Context, username, password string) (string, error) {
+	user, err := s.repo.FindByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", errors.New("用户名不存在")
+			return "", errors.New("用户不存在")
 		}
 		return "", err
 	}
@@ -78,6 +92,13 @@ func (s *UserService) Login(username, password string) (string, error) {
 }
 
 // GetUserByID 通过ID获取用户
-func (s *UserService) GetUserByID(id uint) (*models.User, error) {
-	return s.repo.FindByID(id)
+func (s *UserService) GetUserByID(ctx context.Context, id uint) (*models.User, error) {
+	user, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("用户不存在")
+		}
+		return nil, err
+	}
+	return user, nil
 }

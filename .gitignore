@@ -1,2 +1,34 @@
-./idea
-./log
+# IDE & Editor specific
+.idea/
+.vscode/
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+__debug_bin*
+
+# Log files
+log/
+*.log
+
+# Swagger docs
+docs/
+
+# Local database files
+*.db
+*.db-journal
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Go build outputs
+/vendor/
+/build/
+*.test
+*.prof
+c.out

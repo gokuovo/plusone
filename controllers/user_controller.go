@@ -1,10 +1,13 @@
 package controllers
 
 import (
-	"net/http"
+	"errors"
 
 	"github.com/gin-gonic/gin"
+	"github.com/plusone/dto"
+	"github.com/plusone/response"
 	"github.com/plusone/services"
+	"github.com/plusone/utils/logger"
 )
 
 // UserController 用户控制器
@@ -17,82 +20,89 @@ func NewUserController(userService *services.UserService) *UserController {
 	return &UserController{userService: userService}
 }
 
-// Register 处理用户注册
+// Register
+// @Summary 用户注册
+// @Description 创建一个新用户
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param user body dto.RegisterInput true "用户信息"
+// @Success 200 {object} response.Response{data=dto.UserOutput} "注册成功"
+// @Failure 500 {object} response.Response "服务器错误"
+// @Router /register [post]
 func (c *UserController) Register(ctx *gin.Context) {
-	var input struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-		Email    string `json:"email" binding:"required,email"`
-		Nickname string `json:"nickname"`
-	}
-
+	var input dto.RegisterInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		logger.CtxErrorf(ctx, "参数绑定失败: %v", err)
+		response.Error(ctx, err)
 		return
 	}
 
-	user, err := c.userService.Register(input.Username, input.Password, input.Email, input.Nickname)
+	user, err := c.userService.Register(ctx, input.Username, input.Password, input.Email, input.Nickname)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		logger.CtxErrorf(ctx, "用户注册失败: %v", err)
+		response.Error(ctx, err)
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, gin.H{
-		"message": "注册成功",
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-			"nickname": user.Nickname,
-		},
-	})
+	logger.CtxInfof(ctx, "用户注册成功: %s", user.Username)
+	response.Success(ctx, dto.NewUserOutput(user))
 }
 
-// Login 处理用户登录
+// Login
+// @Summary 用户登录
+// @Description 用户使用用户名和密码登录，获取JWT
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param credentials body dto.LoginInput true "登录凭证"
+// @Success 200 {object} response.Response{data=dto.LoginOutput} "登录成功"
+// @Failure 500 {object} response.Response "服务器错误"
+// @Router /login [post]
 func (c *UserController) Login(ctx *gin.Context) {
-	var input struct {
-		Username string `json:"username" binding:"required"`
-		Password string `json:"password" binding:"required"`
-	}
-
+	var input dto.LoginInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		logger.CtxErrorf(ctx, "参数绑定失败: %v", err)
+		response.Error(ctx, err)
 		return
 	}
 
-	token, err := c.userService.Login(input.Username, input.Password)
+	token, err := c.userService.Login(ctx, input.Username, input.Password)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		logger.CtxErrorf(ctx, "用户登录失败: %v", err)
+		response.Error(ctx, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": "登录成功",
-		"token":   token,
-	})
+	logger.CtxInfof(ctx, "用户登录成功: %s", input.Username)
+	response.Success(ctx, dto.LoginOutput{Token: token})
 }
 
-// GetUserInfo 获取用户信息
+// GetUserInfo
+// @Summary 获取当前用户信息
+// @Description 根据JWT获取当前登录用户的信息
+// @Tags Users
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {object} response.Response{data=dto.UserOutput} "获取成功"
+// @Failure 500 {object} response.Response "服务器错误"
+// @Router /user/info [get]
 func (c *UserController) GetUserInfo(ctx *gin.Context) {
-	// 从上下文中获取用户ID
 	userID, exists := ctx.Get("userID")
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		err := errors.New("未认证: 无法从上下文中获取用户ID")
+		logger.CtxErrorf(ctx, err.Error())
+		response.Error(ctx, err)
 		return
 	}
 
-	user, err := c.userService.GetUserByID(userID.(uint))
+	user, err := c.userService.GetUserByID(ctx, userID.(uint))
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
+		logger.CtxErrorf(ctx, "获取用户信息失败, userID: %d, error: %v", userID, err)
+		response.Error(ctx, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-			"nickname": user.Nickname,
-		},
-	})
+	logger.CtxInfof(ctx, "获取用户信息成功, userID: %d", userID)
+	response.Success(ctx, dto.NewUserOutput(user))
 }

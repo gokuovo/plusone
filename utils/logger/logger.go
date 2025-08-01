@@ -1,74 +1,112 @@
 package logger
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
 )
 
-var (
-	infoLogger    *log.Logger
-	errorLogger   *log.Logger
-	warningLogger *log.Logger
-	logFiles      []*os.File
-)
+// 定义上下文中 logger 的键
+type loggerKey struct{}
 
-func init() {
-	// 创建日志目录
+// 定义上下文中 TraceID 的键
+type traceIDKey struct{}
+
+var logFile *os.File
+
+// Init 初始化日志系统
+func Init() {
 	logDir := "log"
 	if err := os.MkdirAll(logDir, 0755); err != nil {
-		log.Fatalf("创建日志目录失败: %v", err)
+		panic(fmt.Sprintf("创建日志目录失败: %v", err))
 	}
 
-	// 生成当天的日志文件名
 	today := time.Now().Format("2006-01-02")
-	allLogPath := filepath.Join(logDir, fmt.Sprintf("%s-all.log", today))
-	errLogPath := filepath.Join(logDir, fmt.Sprintf("%s-err.log", today))
+	logPath := filepath.Join(logDir, fmt.Sprintf("%s.log", today))
 
-	// 打开日志文件
-	allFile, err := os.OpenFile(allLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	var err error
+	logFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Fatalf("打开全部日志文件失败: %v", err)
-	}
-	errFile, err := os.OpenFile(errLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("打开错误日志文件失败: %v", err)
+		panic(fmt.Sprintf("打开日志文件失败: %v", err))
 	}
 
-	// 保存文件句柄以便后续关闭
-	logFiles = append(logFiles, allFile, errFile)
+	// 创建一个同时写入文件和标准输出的 writer
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
 
-	// 设置日志格式
-	flags := log.Ldate | log.Ltime
+	// 创建 slog 的 JSON Handler
+	handler := slog.NewJSONHandler(multiWriter, &slog.HandlerOptions{
+		// 开启源文件和行号
+		AddSource: true,
+		// 定义日志级别
+		Level: slog.LevelDebug,
+		// 自定义 ReplaceAttr, 用于从 context 中提取 trace_id
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				a.Value = slog.StringValue(a.Value.Time().Format("2006-01-02 15:04:05.000"))
+			}
+			return a
+		},
+	})
 
-	// 同时输出到文件和控制台
-	infoLogger = log.New(io.MultiWriter(os.Stdout, allFile), "[INFO] ", flags)
-	errorLogger = log.New(io.MultiWriter(os.Stderr, allFile, errFile), "[ERROR] ", flags)
-	warningLogger = log.New(io.MultiWriter(os.Stdout, allFile), "[WARN] ", flags)
+	// 创建 logger
+	logger := slog.New(handler)
+
+	// 设置为默认 logger
+	slog.SetDefault(logger)
 }
 
-// CloseLogFiles 关闭日志文件
-func CloseLogFiles() {
-	for _, file := range logFiles {
-		file.Close()
+// CloseLogFile 关闭日志文件
+func CloseLogFile() {
+	if logFile != nil {
+		logFile.Close()
 	}
 }
 
-// 其他日志函数保持不变
-func Info(format string, v ...interface{}) {
-	msg := fmt.Sprintf(format, v...)
-	infoLogger.Printf("%s | %s", time.Now().Format("2006-01-02 15:04:05"), msg)
+// WithLogger 将 logger 存入 context
+func WithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	return context.WithValue(ctx, loggerKey{}, logger)
 }
 
-func Error(format string, v ...interface{}) {
-	msg := fmt.Sprintf(format, v...)
-	errorLogger.Printf("%s | %s", time.Now().Format("2006-01-02 15:04:05"), msg)
+// FromContext 从 context 中获取 logger
+// 如果没有，则返回默认 logger
+func FromContext(ctx context.Context) *slog.Logger {
+	if logger, ok := ctx.Value(loggerKey{}).(*slog.Logger); ok {
+		return logger
+	}
+	return slog.Default()
 }
 
-func Warn(format string, v ...interface{}) {
-	msg := fmt.Sprintf(format, v...)
-	warningLogger.Printf("%s | %s", time.Now().Format("2006-01-02 15:04:05"), msg)
+// WithTraceID 将 TraceID 存入 context
+func WithTraceID(ctx context.Context, traceID string) context.Context {
+	return context.WithValue(ctx, traceIDKey{}, traceID)
+}
+
+// GetTraceID 从 context 中获取 TraceID
+func GetTraceID(ctx context.Context) string {
+	if traceID, ok := ctx.Value(traceIDKey{}).(string); ok {
+		return traceID
+	}
+	return ""
+}
+
+// CtxErrorf 是一个辅助函数，用于从 context 记录错误日志
+func CtxErrorf(ctx context.Context, format string, args ...interface{}) {
+	log := FromContext(ctx).With("trace_id", GetTraceID(ctx))
+	log.Error(fmt.Sprintf(format, args...))
+}
+
+// CtxInfof 是一个辅助函数，用于从 context 记录信息日志
+func CtxInfof(ctx context.Context, format string, args ...interface{}) {
+	log := FromContext(ctx).With("trace_id", GetTraceID(ctx))
+	log.Info(fmt.Sprintf(format, args...))
+}
+
+// CtxWarnf 是一个辅助函数，用于从 context 记录警告日志
+func CtxWarnf(ctx context.Context, format string, args ...interface{}) {
+	log := FromContext(ctx).With("trace_id", GetTraceID(ctx))
+	log.Warn(fmt.Sprintf(format, args...))
 }
