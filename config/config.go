@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -11,11 +12,14 @@ var msg = []byte{32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 44, 45,
 
 // Config 应用配置
 type Config struct {
-	DBType     string
-	DBSource   string
-	JWTSecret  string
-	ServerPort string
-	DBLogLevel string // "silent", "info", "warn", "error"
+	DBType        string
+	DBSource      string
+	JWTSecret     string
+	ServerPort    string
+	DBLogLevel    string // "silent", "info", "warn", "error"
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
 }
 
 // LoadConfig 从环境变量加载配置
@@ -25,12 +29,20 @@ func LoadConfig() (*Config, error) {
 
 	println(fmt.Sprintf("%c[%d;%d;%dm%s%c[0m", 0x1B, 0, 0, 31, msg, 0x1B))
 
+	redisDB, err := strconv.Atoi(getEnv("REDIS_DB", "0"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid REDIS_DB: %w", err)
+	}
+
 	return &Config{
-		DBType:     getEnv("DB_TYPE", "sqlite"), // mysql 或 sqlite
-		DBSource:   getEnv("DB_SOURCE", "oneplusone.db"),
-		JWTSecret:  getEnv("JWT_SECRET", "your_jwt_secret_key"),
-		ServerPort: getEnv("SERVER_PORT", "8080"),
-		DBLogLevel: getEnv("DB_LOG_LEVEL", "info"),
+		DBType:        getEnv("DB_TYPE", "sqlite"), // mysql 或 sqlite
+		DBSource:      getEnv("DB_SOURCE", "oneplusone.db"),
+		JWTSecret:     getEnv("JWT_SECRET", "your_jwt_secret_key"),
+		ServerPort:    getEnv("SERVER_PORT", "8080"),
+		DBLogLevel:    getEnv("DB_LOG_LEVEL", "info"),
+		RedisAddr:     getEnv("REDIS_ADDR", "localhost:6379"),
+		RedisPassword: getEnv("REDIS_PASSWORD", ""),
+		RedisDB:       redisDB,
 	}, nil
 }
 

@@ -41,8 +41,18 @@ func main() {
 		return
 	}
 	// 程序退出时关闭数据库连接
-	defer db.Close()
+	defer utils.Close(db)
 	slog.Info("数据库连接成功")
+
+	// 连接 Redis
+	redisClient, err := utils.ConnectRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
+	if err != nil {
+		slog.Error("连接 Redis 失败", "error", err)
+		return
+	}
+	// 程序退出时关闭 Redis 连接
+	defer redisClient.Close()
+	slog.Info("Redis 连接成功")
 
 	// 自动迁移表结构
 	if err := db.AutoMigrate(&models.User{}); err != nil {
@@ -52,7 +62,7 @@ func main() {
 	slog.Info("数据库迁移完成")
 
 	// 初始化依赖注入容器
-	container := di.NewContainer(db, cfg.JWTSecret)
+	container := di.NewContainer(db, cfg.JWTSecret, redisClient)
 	slog.Info("依赖注入容器初始化完成")
 
 	// 设置路由

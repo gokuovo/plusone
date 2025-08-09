@@ -12,13 +12,8 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// Database 数据库连接管理
-type Database struct {
-	*gorm.DB
-}
-
 // ConnectDB 连接到数据库
-func ConnectDB(dbType, dbSource, dbLogLevel string) (*Database, error) {
+func ConnectDB(dbType, dbSource, dbLogLevel string) (*gorm.DB, error) {
 	var db *gorm.DB
 	var err error
 
@@ -42,15 +37,15 @@ func ConnectDB(dbType, dbSource, dbLogLevel string) (*Database, error) {
 	}
 
 	log.Println("数据库连接成功")
-	return &Database{db}, nil
+	return db, nil
 }
 
 // Close 安全地关闭数据库连接
-func (d *Database) Close() {
-	if d == nil || d.DB == nil {
+func Close(db *gorm.DB) {
+	if db == nil {
 		return
 	}
-	sqlDB, err := d.DB.DB()
+	sqlDB, err := db.DB()
 	if err != nil {
 		slog.Error("获取底层数据库连接失败", "error", err)
 		return

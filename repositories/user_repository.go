@@ -4,17 +4,22 @@ import (
 	"context"
 
 	"github.com/plusone/models"
-	"github.com/plusone/utils"
+	"gorm.io/gorm"
 )
 
 // UserRepository 用户数据访问层
 type UserRepository struct {
-	db *utils.Database
+	db *gorm.DB
 }
 
 // NewUserRepository 创建用户仓库实例
-func NewUserRepository(db *utils.Database) *UserRepository {
+func NewUserRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{db: db}
+}
+
+// Transaction 执行数据库事务
+func (r *UserRepository) Transaction(fc func(tx *gorm.DB) error) error {
+	return r.db.Transaction(fc)
 }
 
 // Create 创建新用户

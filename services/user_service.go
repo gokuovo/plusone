@@ -7,22 +7,23 @@ import (
 	"github.com/plusone/models"
 	"github.com/plusone/repositories"
 	"github.com/plusone/utils"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 // UserService 用户服务层
 type UserService struct {
-	db   *utils.Database
 	repo *repositories.UserRepository
 	jwt  string
+	rdb  *redis.Client
 }
 
 // NewUserService 创建用户服务实例
-func NewUserService(db *utils.Database, repo *repositories.UserRepository, jwtSecret string) *UserService {
+func NewUserService(repo *repositories.UserRepository, jwtSecret string, rdb *redis.Client) *UserService {
 	return &UserService{
-		db:   db,
 		repo: repo,
 		jwt:  jwtSecret,
+		rdb:  rdb,
 	}
 }
 
@@ -30,9 +31,9 @@ func NewUserService(db *utils.Database, repo *repositories.UserRepository, jwtSe
 func (s *UserService) Register(ctx context.Context, username, password, email, nickname string) (*models.User, error) {
 	var user *models.User
 	// GORM 事务
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.repo.Transaction(func(tx *gorm.DB) error {
 		// 使用事务作用域的 repository
-		txRepo := repositories.NewUserRepository(&utils.Database{DB: tx})
+		txRepo := repositories.NewUserRepository(tx)
 
 		// 1. 检查用户名是否已存在
 		_, err := txRepo.FindByUsername(ctx, username)
